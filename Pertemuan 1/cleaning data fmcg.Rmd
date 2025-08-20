@@ -1,0 +1,51 @@
+---
+title: "Untitled"
+author: "Raihanah Nurkhalishah"
+date: "2025-08-19"
+output: html_document
+---
+##CLEANING DATA
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+fmcg = read.csv("C:/Users/Imam/Downloads/FMCG_2022_2024.csv")
+View(fmcg)
+```
+
+```{r}
+glimpse(fmcg)
+```
+
+```{r}
+unique(FMCG$category)
+
+```
+
+```{r}
+fmcg_filtered <- fmcg %>%
+  filter(category == "SnackBar", region == "PL-South") %>%
+  select(date, units_sold, price_unit) %>%
+  arrange(date)
+```
+
+```{r}
+fmcg_daily_units <- fmcg_filtered %>%
+  group_by(date) %>%
+  summarise(
+    daily_units = sum(units_sold, na.rm = TRUE)
+  ) %>%
+  arrange(date)
+
+glimpse(fmcg_daily_units)
+```
+
+```{r}
+library(readr)
+write_csv(fmcg_daily_units, "snackbar_PLSouth.csv")
+```
+
+
+
