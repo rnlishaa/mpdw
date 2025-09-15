@@ -1,1 +1,354 @@
+---
+title: "Untitled"
+author: "Raihanah Nurkhalishah"
+date: "2025-09-15"
+output: html_document
+---
+
+```{r}
+library(dLagM)
+library(dynlm)
+library(MLmetrics)
+library(lmtest)
+library(car)
+```
+
+```{r}
+AQI = read.csv("C:/Users/Imam/Downloads/NewDelhi_Air_quality.csv")
+View(AQI)
+```
+
+```{r}
+str(AQI)
+```
+# 1. Eksplorasi
+```{r} 
+#mencari korelasi antar peubah
+data_pollutants <- AQI[, c("AQI", "CO", "no2", "o3", "pm10", "pm25", "so2")]
+cor_matrix <- cor(data_pollutants, use = "complete.obs")
+
+cor_with_aqi <- cor_matrix["AQI", -1]
+cor_with_aqi_sorted <- sort(cor_with_aqi, decreasing = TRUE)
+print(cor_with_aqi_sorted)
+```
+
+```{r}
+library(ggplot2)
+library(reshape2)
+
+# hitung korelasi
+cor_matrix <- cor(AQI[, c("AQI", "CO", "no2", "o3", "pm10", "pm25", "so2")], 
+                  use = "complete.obs")
+
+# ubah jadi long format
+cor_melt <- melt(cor_matrix)
+
+# plot heatmap
+ggplot(cor_melt, aes(x = Var1, y = Var2, fill = value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white",
+                       midpoint = 0, limit = c(-1,1), space = "Lab",
+                       name = "Korelasi") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  coord_fixed() +
+  labs(title = "Heatmap Korelasi AQI dan Polutan")
+
+```
+berdasarkan hasil eksplorasi, didapatkan peubah O3 memiliki korelasi tertinggi. Oleh karena itu, saya memilih O3 sebagai variabel X. 
+
+# 2. Memilih Variabel O3 & Eksplorasi
+```{r}
+# Membuat Scatter plot
+plot(AQI$o3, AQI$AQI,
+     main = "Scatter Plot AQI vs O3",
+     xlab = "O3",
+     ylab = "AQI",
+     pch = 19, col = "slateblue")
+abline(lm(AQI ~ o3, data = AQI), col = "deeppink", lwd = 2)  
+```
+```{r}
+cor.test(AQI$o3, AQI$AQI, use = "complete.obs")
+```
+Berdasarkan hasil korelasi Pearson didapatkan korelasi AQI dan O3 sebesar 97%.
+
+## UJI ASUMSI
+```{r}
+model_O3 <- lm(AQI ~ o3, data = AQI)
+summary(model_O3)
+```
+
+```{r}
+par(mfrow=c(2,2))
+plot(model_O3)
+```
+
+```{r}
+shapiro.test(residuals(model_O3))
+```
+tidak normal, tdk terpenuhi 
+
+```{r}
+library(lmtest)
+dwtest(model_O3)
+```
+Ada autokorelasi, tdk terpenuhi 
+
+```{r}
+bptest(model_O3)
+```
+tidak ada heteroskedastisitas, terpenuhi
+
+# 3. Split Data
+```{r}
+n <- nrow(AQI)
+n_train <- floor(0.7 * n)   # 70% training
+train_O3 <- AQI[1:n_train, ]
+test_O3  <- AQI[(n_train + 1):n, ]
+nrow(train_O3); nrow(test_O3)
+head(train_O3); head(test_O3)
+```
+
+```{r}
+trainO3.ts<-ts(train_O3)
+testO3.ts<-ts(test_O3)
+AQI.ts<-ts(AQI)
+```
+
+# 4. Pemodelan
+
+## 4.1 Model Koyck
+```{r}
+model.koyck.O3 <- koyckDlm(x = train_O3$o3, y = train_O3$AQI)
+summary(model.koyck.O3)
+```
+
+```{r}
+AIC(model.koyck.O3)
+```
+
+```{r}
+BIC(model.koyck.O3)
+```
+
+Dari hasil tersebut, didapat bahwa peubah $x_t$ dan $y_{t-1}$ memiliki nilai $P-Value<0.05$. Hal ini menunjukkan bahwa peubah $x_t$ dan $y_{t-1}$ berpengaruh signifikan terhadap $y$. Adapun model keseluruhannya adalah sebagai berikut
+
+$$
+\hat{Y_t}=0.60533+ 0.41624X_t+0.25928Y_{t-1}
+$$
+
+### Peramalan dan Akurasi
+
+```{r}
+fore.koyck.O3 <- forecast(model = model.koyck.O3, x=test_O3$o3, h=22)
+fore.koyck.O3
+```
+
+```{r}
+mape.koyck.O3 <- MAPE(fore.koyck.O3$forecasts, test_O3$AQI)
+mape.koyck.O3
+```
+
+```{r}
+GoF(model.koyck.O3)
+```
+
+## 4.2 Regression with Distributed Lag
+```{r}
+# Distributed Lag q=1
+model.dlm1.o3 <- dlm(x = train_O3$o3, y = train_O3$AQI, q = 1)
+summary(model.dlm1.o3)
+```
+
+```{r}
+# Distributed Lag q=2
+model.dlm2.o3 <- dlm(x = train_O3$o3, y = train_O3$AQI, q = 2)
+summary(model.dlm2.o3)
+```
+
+```{r}
+# Distributed Lag q=3
+model.dlm3.o3 <- dlm(x = train_O3$o3, y = train_O3$AQI, q = 3)
+summary(model.dlm3.o3)
+```
+
+```{r}
+results.DLO3 <- data.frame(
+  Model = c("q=1", "q=2", "q=3"),
+  AIC = c(AIC(model.dlm1.o3), AIC(model.dlm2.o3), AIC(model.dlm3.o3)),
+  BIC = c(BIC(model.dlm1.o3), BIC(model.dlm2.o3), BIC(model.dlm3.o3))
+)
+
+print(results.DLO3)
+```
+
+### Peramalan dan Akurasi
+```{r}
+fore.dlm1.o3 <- forecast(model = model.dlm1.o3, x=test_O3$o3, h=22)
+fore.dlm1.o3
+```
+
+```{r}
+mape.dlm1.o3 <- MAPE(fore.dlm1.o3$forecasts, test_O3$AQI)
+mape.dlm1.o3
+```
+
+```{r}
+GoF(model.dlm1.o3)
+```
+
+### Lag Optimum
+
+```{r}
+finiteDLMauto(formula = AQI ~ o3,
+              data = data.frame(train_O3), q.min = 1, q.max = 10,
+              model.type = "dlm", error.type = "AIC", trace = TRUE)
+```
+Berdasarkan output tersebut, lag optimum didapatkan ketika lag=10. Selanjutnya dilakukan pemodelan untuk lag=10
+
+```{r}
+model.dlm10 <- dlm(x = train_O3$o3,y = train_O3$AQI , q = 10)
+summary(model.dlm10)
+```
+
+Dari hasil tersebut terdapat beberapa peubah yang berpengaruh signifikan, diantaranya pada taraf nyata 0,1% yaitu $x_t$ , pada taraf nyata 1% yaitu $x_{t-7}$ , $x_{t-8}$ , $x_{t-9}$ , dan pada taraf nyata 5% yaitu $x_{t-10}$. Adapun keseluruhan model yang terbentuk adalah
+
+$$
+\hat{Y_t}=0.28123+0.38635X_t+...-0.10858X_{t-10}
+$$
+### Peramalan dan Akurasi
+```{r}
+#peramalan dan akurasi
+fore.dlm10 <- forecast(model = model.dlm10, x=test_O3$o3, h=22)
+fore.dlm10
+```
+
+```{r}
+#akurasi data test
+mape.dlm10<- MAPE(fore.dlm10$forecasts, test_O3$AQI)
+mape.dlm10
+```
+
+```{r}
+#akurasi data training
+GoF(model.dlm10)
+```
+
+## 4.3 Model Autoregressive
+```{r}
+model.ardl <- ardlDlm(x = train_O3$o3, y = train_O3$AQI, p = 1 , q = 1)
+summary(model.ardl)
+AIC(model.ardl)
+BIC(model.ardl)
+```
+
+```{r}
+model.ardl2 <- ardlDlm(x = train_O3$o3, y = train_O3$AQI, p = 1 , q = 2)
+summary(model.ardl2)
+AIC(model.ardl2)
+BIC(model.ardl2)
+```
+```{r}
+model.ardl3 <- ardlDlm(x = train_O3$o3, y = train_O3$AQI, p = 1 , q = 3)
+summary(model.ardl3)
+AIC(model.ardl3)
+BIC(model.ardl3)
+```
+
+### Peramalan dan Akurasi
+```{r}
+model.ardl <- ardlDlm(AQI ~ o3, data = train_O3, p = 1, q = 1)
+summary(model.ardl)
+```
+```{r}
+fore.ardl <- forecast(model = model.ardl, x=test_O3$o3, h=22)
+fore.ardl
+```
+Data di atas merupakan hasil peramalan untuk 22 periode ke depan menggunakan Model Autoregressive dengan $p=1$ dan $q=1$.
+
+```{r}
+mape.ardl <- MAPE(fore.ardl$forecasts, test_O3$AQI)
+mape.ardl
+```
+Berikut adalah MAPE dari hasil metode ARDL dengan p=1 dan q=1.
+```{r}
+#akurasi data training
+GoF(model.ardl)
+```
+Berdasarkan akurasi di atas, terlihat bahwa nilai MAPE keduanya tidak jauh berbeda. Artinya, model regresi dengan distribusi lag ini tidak `overfitted` atau `underfitted`.
+
+### Lag Optimum
+
+```{r}
+model.ardl.opt <- ardlBoundOrders(data = data.frame(AQI), ic = "AIC", 
+                                  formula = AQI ~ o3 )
+model.ardl.opt
+```
+```{r}
+min_p = c()
+for(i in 1:6){
+  min_p[i] = min(model.ardl.opt$Stat.table[[i]], na.rm = TRUE)
+}
+q_opt = which(min_p == min(min_p, na.rm = TRUE))
+p_opt = which(model.ardl.opt$Stat.table[[q_opt]] == 
+                min(model.ardl.opt$Stat.table[[q_opt]], na.rm = TRUE))
+data.frame(
+  "q_optimum" = q_opt,
+  "p_optimum" = p_opt,
+  "AIC" = min(model.ardl.opt$Stat.table[[q_opt]], na.rm = TRUE)
+)
+
+```
+Dari tabel di atas terlihat bahwa nilai AIC terendah diperoleh pada kombinasi $p=13$ dan $q=2$, yaitu sebesar `16.55044`. Hal ini menunjukkan bahwa model ARDL yang optimum adalah ketika $p=13$ dan $q=2$. Karena nilai $p$ dan $q$ optimum telah ditentukan, langkah selanjutnya adalah menampilkan summary, AIC, dan BIC dari model ARDL tersebut.
+```{r}
+model.ardl.optimum <- ardlDlm(x = train_O3$o3, y = train_O3$AQI, p = 13 , q = 2)
+summary(model.ardl.optimum)
+AIC(model.ardl.optimum)
+BIC(model.ardl.optimum)
+```
+Hasil regresi menunjukkan bahwa model memiliki nilai R² = 0.9907 dan Adjusted R² = 0.9833, artinya sekitar 99% variasi variabel dependen dapat dijelaskan oleh variabel independen dan lag-nya. Nilai F-statistic = 133.1 dengan dan p-value < 2.2e-16 menunjukkan bahwa model regresi secara keseluruhan sangat signifikan. Artinya, kombinasi variabel bebas dan lag yang digunakan mampu menjelaskan variasi variabel dependen dengan baik, sehingga model layak digunakan untuk analisis lebih lanjut.
+Xt memiliki koefisien 0.378563 dengan p-value 0.000342. Nilai ini signifikan pada taraf nyata 0,1% (p < 0.001).
+X7 (lag ke-7) memiliki koefisien 0.347960 dengan p-value 0.035686. Nilai ini signifikan pada taraf nyata 5% (p < 0.05). 
+Selanjutnya dilakukan peramalan dan akurasi terhadap lag optimum.
+### Peramalan dan Akurasi
+```{r}
+model.ardl.optimum <- ardlDlm(AQI ~ o3, data = train_O3, p = 13, q = 2)
+fore.ardl.optimum <- forecast(model = model.ardl.optimum, x=test_O3$o3, h=22)
+fore.ardl.optimum
+```
+
+```{r}
+mape.ardl.optimum <- MAPE(fore.ardl.optimum$forecasts, test_O3$AQI)
+mape.ardl.optimum
+```
+
+# 5. Perbandingan Model
+```{r}
+akurasi <- matrix(c(mape.koyck.O3, mape.dlm10, mape.ardl.optimum))
+row.names(akurasi)<- c("Koyck","DLM","Autoregressive")
+colnames(akurasi) <- c("MAPE")
+akurasi
+```
+Berdasarkan hasil evaluasi menggunakan MAPE, ketiga model (Koyck, DLM, dan Autoregressive/ARDL) sama-sama memberikan tingkat kesalahan yang relatif kecil (<10%), sehingga semuanya dapat dikategorikan cukup akurat dalam memprediksi AQI. Namun, model DLM menghasilkan nilai MAPE terkecil (1.13%) sehingga dapat dianggap sebagai model dengan akurasi terbaik. 
+
+### Plot
+Untuk membandingkan hasil peramalan dari berbagai model (Koyck, DLM, dan ARDL) dengan data aktual, dibuat grafik garis. Visualisasi ini membantu melihat seberapa dekat hasil ramalan tiap model dengan nilai aktual.
+
+```{r}
+par(mfrow=c(1,1))
+plot(test_O3$o3, test_O3$AQI, type="b", col="black",
+     ylim=range(c(test_O3$AQI,
+                  fore.koyck.O3$forecasts,
+                  fore.dlm10$forecasts,
+                  fore.ardl.optimum$forecasts)))
+points(test_O3$o3, fore.koyck.O3$forecasts, col="red")
+lines(test_O3$o3, fore.koyck.O3$forecasts, col="red")
+points(test_O3$o3, fore.dlm10$forecasts, col="blue")
+lines(test_O3$o3, fore.dlm10$forecasts, col="blue")
+points(test_O3$o3, fore.ardl.optimum$forecasts, col="green")
+lines(test_O3$o3, fore.ardl.optimum$forecasts, col="green")
+legend("topleft", c("aktual", "koyck", "DLM", "autoregressive"),
+       lty=1, col=c("black","red","blue","green"), cex=0.8)
+```
+
 
