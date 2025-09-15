@@ -2,7 +2,14 @@
 title: "TUGAS NEW DELHI AQI"
 author: "Raihanah Nurkhalishah"
 date: "2025-09-15"
-output: html_document
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    number_sections: true
+    theme: flatly
+    css: "pink.css"
 ---
 
 ```{r}
@@ -21,7 +28,7 @@ View(AQI)
 ```{r}
 str(AQI)
 ```
-# 1. Eksplorasi
+# Eksplorasi
 ```{r} 
 #mencari korelasi antar peubah
 data_pollutants <- AQI[, c("AQI", "CO", "no2", "o3", "pm10", "pm25", "so2")]
@@ -57,7 +64,7 @@ ggplot(cor_melt, aes(x = Var1, y = Var2, fill = value)) +
 ```
 berdasarkan hasil eksplorasi, didapatkan peubah O3 memiliki korelasi tertinggi. Oleh karena itu, saya memilih O3 sebagai variabel X. 
 
-# 2. Memilih Variabel O3 & Eksplorasi
+# Memilih Variabel O3 & Eksplorasi
 ```{r}
 # Membuat Scatter plot
 plot(AQI$o3, AQI$AQI,
@@ -99,7 +106,7 @@ bptest(model_O3)
 ```
 tidak ada heteroskedastisitas, terpenuhi
 
-# 3. Split Data
+# Split Data
 ```{r}
 n <- nrow(AQI)
 n_train <- floor(0.7 * n)   # 70% training
@@ -115,9 +122,9 @@ testO3.ts<-ts(test_O3)
 AQI.ts<-ts(AQI)
 ```
 
-# 4. Pemodelan
+# Pemodelan
 
-## 4.1 Model Koyck
+## Model Koyck
 ```{r}
 model.koyck.O3 <- koyckDlm(x = train_O3$o3, y = train_O3$AQI)
 summary(model.koyck.O3)
@@ -153,7 +160,7 @@ mape.koyck.O3
 GoF(model.koyck.O3)
 ```
 
-## 4.2 Regression with Distributed Lag
+## Regression with Distributed Lag
 ```{r}
 # Distributed Lag q=1
 model.dlm1.o3 <- dlm(x = train_O3$o3, y = train_O3$AQI, q = 1)
@@ -216,6 +223,7 @@ Dari hasil tersebut terdapat beberapa peubah yang berpengaruh signifikan, dianta
 $$
 \hat{Y_t}=0.28123+0.38635X_t+...-0.10858X_{t-10}
 $$
+
 ### Peramalan dan Akurasi
 ```{r}
 #peramalan dan akurasi
@@ -234,7 +242,7 @@ mape.dlm10
 GoF(model.dlm10)
 ```
 
-## 4.3 Model Autoregressive
+## Model Autoregressive
 ```{r}
 model.ardl <- ardlDlm(x = train_O3$o3, y = train_O3$AQI, p = 1 , q = 1)
 summary(model.ardl)
@@ -322,7 +330,7 @@ mape.ardl.optimum <- MAPE(fore.ardl.optimum$forecasts, test_O3$AQI)
 mape.ardl.optimum
 ```
 
-# 5. Perbandingan Model
+# Perbandingan Model
 ```{r}
 akurasi <- matrix(c(mape.koyck.O3, mape.dlm10, mape.ardl.optimum))
 row.names(akurasi)<- c("Koyck","DLM","Autoregressive")
