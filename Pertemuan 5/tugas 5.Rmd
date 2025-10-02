@@ -1,0 +1,191 @@
+---
+title: "Tugas Praktikum 5"
+author: "Raihanah Nurkhalishah"
+date: "2025-10-02"
+output: html_document
+---
+
+```{r}
+library(ggplot2)
+library(tsibble)
+library(tseries)
+library(MASS)
+library(lattice)
+```
+# Input Data
+```{r}
+bitcoin = read.csv("C:/Users/Imam/Downloads/archive (1)/btc_historical_price.csv")
+View(bitcoin)
+```
+
+```{r}
+bitcoinpart <- bitcoin[2485:3311, ]
+dim(bitcoinpart)
+str(bitcoinpart)
+View(bitcoinpart)
+```
+## Ubah data menjadi time series
+```{r}
+bitcoin_ts <- ts(bitcoinpart$price)
+```
+# Plot Time Series
+```{r}
+library(ggplot2)
+library(tsibble)
+plot_bitcoin <- bitcoin_ts |> as_tsibble() |> 
+  ggplot(aes(x = index, y = value)) + geom_line() + theme_bw() +
+  xlab("Time Period") + ylab("Gold")
+plot_bitcoin
+mean(bitcoin_ts)
+sd(bitcoin_ts)
+var(bitcoin_ts)
+```
+```{r}
+lattice::densityplot(as.vector(bitcoin_ts))
+```
+
+# Plot ACF
+```{r}
+acf(bitcoin_ts)
+```
+
+# Uji ADF
+```{r}
+tseries::adf.test(bitcoin_ts)
+```
+
+# Plot Box-Cox
+```{r}
+index <- seq(2485:3311)
+
+# Box-Cox
+bc <- boxcox(
+  bitcoin_ts ~ index,
+  lambda = seq(-5, 5, by = 0.001)
+)
+
+# Nilai lambda optimum
+lambda <- bc$x[which.max(bc$y)]
+lambda
+
+# Selang kepercayaan 95% untuk lambda
+ci_lambda <- bc$x[bc$y > max(bc$y) - 0.5 * qchisq(0.95, 1)]
+
+# Batas bawah dan batas atas
+ci_lower <- min(ci_lambda)
+ci_upper <- max(ci_lambda)
+
+c(Batas_Bawah = ci_lower, Batas_Atas = ci_upper)
+```
+
+# Partisi Data Deret Waktu
+```{r}
+n <- nrow(bitcoinpart)
+n_train <- floor(0.8 * n)
+
+# bagi data (train & test)
+training_btc <- bitcoinpart[1:n_train, ]
+testing_btc  <- bitcoinpart[(n_train+1):n, ]
+
+train.btc.ts <- ts(training_btc$price)
+test.btc.ts  <- ts(testing_btc$price)
+
+train.btc.ts
+test.btc.ts
+```
+
+```{r}
+library(ggplot2)
+library(tsibble)
+
+plot.bitcoin <- bitcoin_ts |> 
+  as_tsibble() |> 
+  ggplot(aes(x = index, y = value)) +
+  geom_line() +
+  theme_bw() +
+  xlab("Obs") + 
+  ylab("Nilai") +
+  
+  # Tambahkan garis batas
+  geom_vline(xintercept = 661, linetype = "dashed", color = "red") +
+  geom_vline(xintercept = 166, linetype = "dashed", color = "blue") +
+  ggtitle("Partisi Deret Waktu:")
+
+plot.bitcoin
+```
+
+## Data Train
+```{r}
+dt_bitcoin <- bitcoin_ts[1:661] |> ts()
+mean(dt_bitcoin)
+var(dt_bitcoin)
+```
+
+### Plot Time Series Data Train
+
+```{r}
+dt_bitcoin |> as_tsibble() |> 
+  ggplot(aes(x = index, y = value)) +
+  geom_line() + theme_bw() +
+  xlab("Time Period") + ylab("Bitcoin")
+```
+### Plot ACF
+```{r}
+acf(dt_bitcoin, main = "ACF Bitcoin Price Training Data")
+```
+### Uji ADF
+```{r}
+adf.test(dt_bitcoin)
+```
+Nilai p-value sebesar 0.6851. Karena p-value lebih besar dari 0.05, maka gagal menolak hipotesis nol yang menyatakan bahwa data tidak stasioner. Dengan demikian, data harga bitcoin pada data train tidak stasioner.
+
+### Plot Box-Cox Data Test
+```{r}
+# Misal data training ts kamu adalah train_btc.ts
+n <- length(train_btc.ts)   # 661
+
+index <- 1:n   
+
+# Model regresi sederhana: price ~ index
+model <- lm(train_btc.ts ~ index)
+
+# Uji Box-Cox
+library(MASS)
+bc <- boxcox(model, lambda = seq(0, 6, by = 0.1))
+
+# Nilai lambda optimum
+lambda2 <- bc$x[which.max(bc$y)]
+lambda2
+
+# Selang kepercayaan 95%
+ci_lambda2 <- bc$x[bc$y > max(bc$y) - 0.5 * qchisq(0.95, 1)]
+c(Batas_Bawah = min(ci_lambda2), Batas_Atas = max(ci_lambda2))
+```
+```
+
+##Data Test
+```{r}
+data.bitcoin <- bitcoin_ts[662:827] |> ts()
+mean(data.bitcoin)
+var(data.bitcoin)
+```
+
+### Plot Time Series Data Test
+```{r}
+data.bitcoin |> as_tsibble() |> 
+  ggplot(aes(x = index, y = value)) +
+  geom_line()+theme_bw() +
+  xlab("Time Period") + ylab("Bitcoin Price")
+```
+
+### Plot ACF Data Test
+```{r}
+acf(data.bitcoin, main="ACF Bitcoin Price Test Data")
+```
+
+### Uji ADF Data Test
+```{r}
+adf.test(data.bitcoin)
+```
+Nilai yang dimiliki p-value sebesar 0.8068. Karena p-value lebih besar dari 0.05, maka gagal menolak hipotesis nol yang menyatakan bahwa data tidak stasioner. Dengan demikian, data harga bitcoin pada data test tidak stasioner.
+
